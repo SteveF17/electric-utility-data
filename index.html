@@ -82,6 +82,555 @@
             background-color: #0066cc;
             color: white;
         }
+        .btn-success {
+            background-color: #28a745;
+            color: white;
+        }
+        .btn-secondary {
+            background-color: #e0e0e0;
+            color: #333;
+        }
+        .btn:hover {
+            opacity: 0.9;
+        }
+        .stats {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        .stat-card {
+            background: white;
+            padding: 15px 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            min-width: 180px;
+        }
+        .stat-label {
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+        }
+        .stat-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: #333;
+        }
+        .table-container {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th {
+            background-color: #0066cc;
+            color: white;
+            padding: 12px 10px;
+            text-align: left;
+            font-size: 12px;
+            text-transform: uppercase;
+            position: sticky;
+            top: 0;
+            cursor: pointer;
+        }
+        th:hover {
+            background-color: #0055aa;
+        }
+        th.sort-asc::after {
+            content: ' ▲';
+        }
+        th.sort-desc::after {
+            content: ' ▼';
+        }
+        td {
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+            font-size: 14px;
+        }
+        tr:hover {
+            background-color: #f8f9fa;
+        }
+        .number {
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+        }
+        .table-wrapper {
+            max-height: 600px;
+            overflow-y: auto;
+        }
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+        .header-row {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .header-buttons {
+            display: flex;
+            gap: 10px;
+            margin-left: auto;
+        }
+        .no-results {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header-row">
+            <div>
+                <h1>Electric Utility Company Data</h1>
+                <p class="subtitle">Investor-Owned Utilities (IOUs) by State</p>
+            </div>
+            <div class="header-buttons">
+                <button class="btn btn-success" onclick="downloadExcel()">📊 Download to Excel</button>
+                <a href="company_data.csv" download class="btn btn-secondary">⬇ Download Full CSV</a>
+            </div>
+        </div>
+
+        <div class="filters">
+            <div class="filter-row">
+                <div class="filter-group search-box">
+                    <label>Search (Company, Holding Company, or State)</label>
+                    <input type="text" id="searchInput" placeholder="Type to search...">
+                </div>
+            </div>
+            <div class="filter-row">
+                <div class="filter-group">
+                    <label>Company Name</label>
+                    <select id="companyFilter">
+                        <option value="">All Companies</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Holding Company</label>
+                    <select id="holdingFilter">
+                        <option value="">All Holding Companies</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>State</label>
+                    <select id="stateFilter">
+                        <option value="">All States</option>
+                    </select>
+                </div>
+                <button class="btn btn-secondary" onclick="clearFilters()">Clear Filters</button>
+            </div>
+        </div>
+
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-label">Companies Shown</div>
+                <div class="stat-value" id="companyCount">-</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Total Customers</div>
+                <div class="stat-value" id="totalCustomers">-</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Total Sales (MWh)</div>
+                <div class="stat-value" id="totalSales">-</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Total Revenue ($M)</div>
+                <div class="stat-value" id="totalRevenue">-</div>
+            </div>
+        </div>
+
+        <div class="table-container">
+            <div class="table-wrapper">
+                <table id="dataTable">
+                    <thead>
+                        <tr>
+                            <th data-column="0">Company Name</th>
+                            <th data-column="1">Holding Company</th>
+                            <th data-column="2">State</th>
+                            <th data-column="3" class="number">Customers</th>
+                            <th data-column="4" class="number">Sales (MWh)</th>
+                            <th data-column="5" class="number">Revenue ($000s)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody">
+                        <tr><td colspan="6" class="loading">Loading data...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let allData = [];
+        let filteredData = [];
+        let sortColumn = 0;
+        let sortDirection = 'asc';
+
+        // Load CSV data
+        async function loadData() {
+            try {
+                const response = await fetch('company_data.csv');
+                const text = await response.text();
+                parseCSV(text);
+            } catch (error) {
+                document.getElementById('tableBody').innerHTML = 
+                    '<tr><td colspan="6" class="loading">Error loading data. Make sure company_data.csv is in the same folder.</td></tr>';
+            }
+        }
+
+        // Parse CSV
+        function parseCSV(text) {
+            const lines = text.trim().split('\n');
+            const headers = parseCSVLine(lines[0]);
+            
+            allData = [];
+            for (let i = 1; i < lines.length; i++) {
+                const values = parseCSVLine(lines[i]);
+                if (values.length >= 7) {
+                    allData.push({
+                        companyName: values[0] || '',
+                        holdingCompany: values[1] || '',
+                        state: values[2] || '',
+                        customers: parseNumber(values[4]),
+                        sales: parseNumber(values[5]),
+                        revenue: parseNumber(values[6])
+                    });
+                }
+            }
+            
+            populateFilters();
+            applyFilters();
+        }
+
+        // Parse CSV line (handles quoted values)
+        function parseCSVLine(line) {
+            const result = [];
+            let current = '';
+            let inQuotes = false;
+            
+            for (let i = 0; i < line.length; i++) {
+                const char = line[i];
+                if (char === '"') {
+                    inQuotes = !inQuotes;
+                } else if (char === ',' && !inQuotes) {
+                    result.push(current.trim());
+                    current = '';
+                } else {
+                    current += char;
+                }
+            }
+            result.push(current.trim());
+            return result;
+        }
+
+        // Parse number from string
+        function parseNumber(str) {
+            if (!str) return 0;
+            return parseFloat(str.replace(/,/g, '')) || 0;
+        }
+
+        // Format number with commas
+        function formatNumber(num) {
+            if (!num || num === 0) return '-';
+            return Math.round(num).toLocaleString();
+        }
+
+        // Populate filter dropdowns
+        function populateFilters() {
+            const companies = [...new Set(allData.map(d => d.companyName))].sort();
+            const holdings = [...new Set(allData.map(d => d.holdingCompany))].sort();
+            const states = [...new Set(allData.map(d => d.state))].sort();
+
+            populateSelect('companyFilter', companies);
+            populateSelect('holdingFilter', holdings);
+            populateSelect('stateFilter', states);
+        }
+
+        function populateSelect(id, options) {
+            const select = document.getElementById(id);
+            const currentValue = select.value;
+            const firstOption = select.options[0].text;
+            select.innerHTML = `<option value="">${firstOption}</option>`;
+            options.forEach(opt => {
+                if (opt) {
+                    const option = document.createElement('option');
+                    option.value = opt;
+                    option.textContent = opt;
+                    select.appendChild(option);
+                }
+            });
+            select.value = currentValue;
+        }
+
+        // Apply filters
+        function applyFilters() {
+            const search = document.getElementById('searchInput').value.toLowerCase();
+            const company = document.getElementById('companyFilter').value;
+            const holding = document.getElementById('holdingFilter').value;
+            const state = document.getElementById('stateFilter').value;
+
+            filteredData = allData.filter(row => {
+                if (search && !row.companyName.toLowerCase().includes(search) && 
+                    !row.holdingCompany.toLowerCase().includes(search) &&
+                    !row.state.toLowerCase().includes(search)) return false;
+                if (company && row.companyName !== company) return false;
+                if (holding && row.holdingCompany !== holding) return false;
+                if (state && row.state !== state) return false;
+                return true;
+            });
+
+            sortData();
+            renderTable();
+            updateStats();
+        }
+
+        // Sort data
+        function sortData() {
+            const columns = ['companyName', 'holdingCompany', 'state', 'customers', 'sales', 'revenue'];
+            const column = columns[sortColumn];
+            
+            filteredData.sort((a, b) => {
+                let valA = a[column];
+                let valB = b[column];
+                
+                if (typeof valA === 'string') {
+                    valA = valA.toLowerCase();
+                    valB = valB.toLowerCase();
+                }
+                
+                if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
+                if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
+                return 0;
+            });
+        }
+
+        // Render table
+        function renderTable() {
+            const tbody = document.getElementById('tableBody');
+            
+            if (filteredData.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="no-results">No matching records found</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = filteredData.map(row => `
+                <tr>
+                    <td>${row.companyName}</td>
+                    <td>${row.holdingCompany}</td>
+                    <td>${row.state}</td>
+                    <td class="number">${formatNumber(row.customers)}</td>
+                    <td class="number">${formatNumber(row.sales)}</td>
+                    <td class="number">${formatNumber(row.revenue)}</td>
+                </tr>
+            `).join('');
+
+            // Update sort indicators
+            document.querySelectorAll('th').forEach((th, i) => {
+                th.classList.remove('sort-asc', 'sort-desc');
+                if (i === sortColumn) {
+                    th.classList.add(sortDirection === 'asc' ? 'sort-asc' : 'sort-desc');
+                }
+            });
+        }
+
+        // Update statistics
+        function updateStats() {
+            document.getElementById('companyCount').textContent = filteredData.length;
+            document.getElementById('totalCustomers').textContent = formatNumber(
+                filteredData.reduce((sum, row) => sum + row.customers, 0)
+            );
+            document.getElementById('totalSales').textContent = formatNumber(
+                filteredData.reduce((sum, row) => sum + row.sales, 0)
+            );
+            document.getElementById('totalRevenue').textContent = formatNumber(
+                filteredData.reduce((sum, row) => sum + row.revenue, 0) / 1000
+            );
+        }
+
+        // Clear all filters
+        function clearFilters() {
+            document.getElementById('searchInput').value = '';
+            document.getElementById('companyFilter').value = '';
+            document.getElementById('holdingFilter').value = '';
+            document.getElementById('stateFilter').value = '';
+            applyFilters();
+        }
+
+        // Download filtered data to Excel (CSV format that Excel opens)
+        function downloadExcel() {
+            if (filteredData.length === 0) {
+                alert('No data to download. Please adjust your filters.');
+                return;
+            }
+
+            // Create CSV content with headers
+            const headers = ['Company Name', 'Holding Company', 'State', 'Customers', 'Sales (MWh)', 'Revenue ($000s)'];
+            let csvContent = headers.join(',') + '\n';
+
+            // Add data rows
+            filteredData.forEach(row => {
+                const values = [
+                    escapeCSV(row.companyName),
+                    escapeCSV(row.holdingCompany),
+                    escapeCSV(row.state),
+                    row.customers,
+                    row.sales,
+                    row.revenue
+                ];
+                csvContent += values.join(',') + '\n';
+            });
+
+            // Add summary row
+            const totalCustomers = filteredData.reduce((sum, row) => sum + row.customers, 0);
+            const totalSales = filteredData.reduce((sum, row) => sum + row.sales, 0);
+            const totalRevenue = filteredData.reduce((sum, row) => sum + row.revenue, 0);
+            csvContent += '\n';
+            csvContent += `TOTALS,${filteredData.length} companies,,${totalCustomers},${totalSales},${totalRevenue}\n`;
+
+            // Create filename with filter info
+            let filename = 'utility_data';
+            const state = document.getElementById('stateFilter').value;
+            const holding = document.getElementById('holdingFilter').value;
+            if (state) filename += '_' + state.replace(/\s+/g, '_');
+            if (holding) filename += '_' + holding.replace(/\s+/g, '_').substring(0, 20);
+            filename += '_' + new Date().toISOString().slice(0, 10) + '.csv';
+
+            // Download the file
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = filename;
+            link.click();
+            URL.revokeObjectURL(link.href);
+        }
+
+        // Escape CSV values (handle commas and quotes)
+        function escapeCSV(value) {
+            if (!value) return '';
+            const str = String(value);
+            if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+                return '"' + str.replace(/"/g, '""') + '"';
+            }
+            return str;
+        }
+
+        // Event listeners
+        document.getElementById('searchInput').addEventListener('input', applyFilters);
+        document.getElementById('companyFilter').addEventListener('change', applyFilters);
+        document.getElementById('holdingFilter').addEventListener('change', applyFilters);
+        document.getElementById('stateFilter').addEventListener('change', applyFilters);
+
+        // Sort on header click
+        document.querySelectorAll('th').forEach(th => {
+            th.addEventListener('click', () => {
+                const column = parseInt(th.dataset.column);
+                if (sortColumn === column) {
+                    sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+                } else {
+                    sortColumn = column;
+                    sortDirection = 'asc';
+                }
+                sortData();
+                renderTable();
+            });
+        });
+
+        // Load data on page load
+        loadData();
+    </script>
+</body>
+</html><!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Electric Utility Company Data</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+        }
+        body {
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            color: #666;
+            margin-bottom: 20px;
+        }
+        .filters {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .filter-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin-bottom: 15px;
+            align-items: flex-end;
+        }
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            min-width: 200px;
+        }
+        .filter-group label {
+            font-size: 12px;
+            font-weight: 600;
+            color: #555;
+            margin-bottom: 5px;
+            text-transform: uppercase;
+        }
+        .filter-group input, .filter-group select {
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .filter-group input:focus, .filter-group select:focus {
+            outline: none;
+            border-color: #0066cc;
+        }
+        .search-box {
+            flex-grow: 1;
+            min-width: 300px;
+        }
+        .search-box input {
+            width: 100%;
+        }
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            height: 40px;
+        }
+        .btn-primary {
+            background-color: #0066cc;
+            color: white;
+        }
         .btn-secondary {
             background-color: #e0e0e0;
             color: #333;
